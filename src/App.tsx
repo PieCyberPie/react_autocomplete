@@ -1,31 +1,22 @@
-/* eslint-disable @typescript-eslint/indent */
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import './App.scss';
 import { peopleFromServer } from './data/people';
 import classNames from 'classnames';
 import { Person } from './types/Person';
-import { useEffect, useRef } from 'react';
+import { useDebounce } from './hooks/useDebounce';
 
-export const App: React.FC = () => {
+interface AppProps {
+  delay?: number;
+  onSelected?: (person: Person | null) => void;
+}
+
+export const App: React.FC<AppProps> = ({ delay = 300, onSelected }) => {
   const [inputFocused, setInputFocused] = useState(false);
   const [selectedPerson, setSelectedPerson] = useState<Person | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [debounceDelay, setDebounceDelay] = useState(300); // Customizable delay
   const dropdownRef = useRef<HTMLDivElement | null>(null);
 
-  const useDebounce = <T,>(value: T, delay = 300): T => {
-    const [debouncedValue, setDebouncedValue] = useState(value);
-
-    useEffect(() => {
-      const handler = setTimeout(() => setDebouncedValue(value), delay);
-
-      return () => clearTimeout(handler);
-    }, [value, delay]);
-
-    return debouncedValue;
-  };
-
-  const debouncedQuery = useDebounce(searchQuery, debounceDelay);
+  const debouncedQuery = useDebounce(searchQuery, delay);
 
   const handleQueryChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     setSearchQuery(event.target.value);
@@ -34,32 +25,35 @@ export const App: React.FC = () => {
 
   const handlePersonSelect = (newTarget: Person) => {
     setSelectedPerson(newTarget);
-    setInputFocused(false); // Close the dropdown after selecting a person
+    setInputFocused(false);
+    onSelected?.(newTarget); // Pass the selected person
   };
 
-  // Handle click outside
+  // Close dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (
         dropdownRef.current &&
         !dropdownRef.current.contains(event.target as Node)
       ) {
-        setInputFocused(false); // Close the dropdown
+        setInputFocused(false);
       }
     };
 
-    document.addEventListener('mousedown', handleClickOutside);
+    const dropdownNode = dropdownRef.current;
+
+    dropdownNode?.addEventListener('mousedown', handleClickOutside);
 
     return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
+      dropdownNode?.removeEventListener('mousedown', handleClickOutside);
     };
   }, []);
 
-  // Filter people based on the debounced query
-  const filteredPeople = peopleFromServer.filter(person =>
-    debouncedQuery
-      ? person.name.toLowerCase().includes(debouncedQuery.toLowerCase())
-      : inputFocused,
+  const filteredPeople = peopleFromServer.filter(
+    person =>
+      (debouncedQuery.trim() !== '' &&
+        person.name.toLowerCase().includes(debouncedQuery.toLowerCase())) ||
+      (debouncedQuery.trim() === '' && inputFocused), // Show all when query is empty and input is focused
   );
 
   return (
@@ -75,10 +69,8 @@ export const App: React.FC = () => {
           </h1>
         )}
         <div
-          ref={dropdownRef} // Attach ref to the dropdown
-          className={classNames('dropdown', {
-            'is-active': inputFocused,
-          })}
+          ref={dropdownRef}
+          className={classNames('dropdown', { 'is-active': inputFocused })}
         >
           <div className="dropdown-trigger">
             <input
@@ -115,7 +107,7 @@ export const App: React.FC = () => {
             </div>
           </div>
         </div>
-        {debouncedQuery && filteredPeople.length === 0 && (
+        {debouncedQuery !== '' && filteredPeople.length === 0 && (
           <div
             className="notification
             is-danger
